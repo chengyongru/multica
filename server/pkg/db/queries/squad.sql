@@ -20,6 +20,8 @@ UPDATE squad SET
     name = COALESCE(sqlc.narg('name'), name),
     description = COALESCE(sqlc.narg('description'), description),
     leader_id = COALESCE(sqlc.narg('leader_id'), leader_id),
+    avatar_url = COALESCE(sqlc.narg('avatar_url'), avatar_url),
+    instructions = COALESCE(sqlc.narg('instructions'), instructions),
     updated_at = now()
 WHERE id = $1
 RETURNING *;

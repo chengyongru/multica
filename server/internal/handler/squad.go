@@ -15,16 +15,18 @@ import (
 // ── Response types ──────────────────────────────────────────────────────────
 
 type SquadResponse struct {
-	ID          string  `json:"id"`
-	WorkspaceID string  `json:"workspace_id"`
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	LeaderID    string  `json:"leader_id"`
-	CreatorID   string  `json:"creator_id"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
-	ArchivedAt  *string `json:"archived_at"`
-	ArchivedBy  *string `json:"archived_by"`
+	ID           string  `json:"id"`
+	WorkspaceID  string  `json:"workspace_id"`
+	Name         string  `json:"name"`
+	Description  string  `json:"description"`
+	Instructions string  `json:"instructions"`
+	AvatarURL    *string `json:"avatar_url"`
+	LeaderID     string  `json:"leader_id"`
+	CreatorID    string  `json:"creator_id"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
+	ArchivedAt   *string `json:"archived_at"`
+	ArchivedBy   *string `json:"archived_by"`
 }
 
 type SquadMemberResponse struct {
@@ -51,16 +53,18 @@ type SquadActivityLogResponse struct {
 
 func squadToResponse(s db.Squad) SquadResponse {
 	return SquadResponse{
-		ID:          uuidToString(s.ID),
-		WorkspaceID: uuidToString(s.WorkspaceID),
-		Name:        s.Name,
-		Description: s.Description,
-		LeaderID:    uuidToString(s.LeaderID),
-		CreatorID:   uuidToString(s.CreatorID),
-		CreatedAt:   timestampToString(s.CreatedAt),
-		UpdatedAt:   timestampToString(s.UpdatedAt),
-		ArchivedAt:  timestampToPtr(s.ArchivedAt),
-		ArchivedBy:  uuidToPtr(s.ArchivedBy),
+		ID:           uuidToString(s.ID),
+		WorkspaceID:  uuidToString(s.WorkspaceID),
+		Name:         s.Name,
+		Description:  s.Description,
+		Instructions: s.Instructions,
+		AvatarURL:    textToPtr(s.AvatarUrl),
+		LeaderID:     uuidToString(s.LeaderID),
+		CreatorID:    uuidToString(s.CreatorID),
+		CreatedAt:    timestampToString(s.CreatedAt),
+		UpdatedAt:    timestampToString(s.UpdatedAt),
+		ArchivedAt:   timestampToPtr(s.ArchivedAt),
+		ArchivedBy:   uuidToPtr(s.ArchivedBy),
 	}
 }
 
@@ -189,10 +193,6 @@ func (h *Handler) CreateSquad(w http.ResponseWriter, r *http.Request) {
 		CreatorID:   member.UserID,
 	})
 	if err != nil {
-		if isUniqueViolation(err) {
-			writeError(w, http.StatusConflict, "squad name already exists in this workspace")
-			return
-		}
 		writeError(w, http.StatusInternalServerError, "failed to create squad")
 		return
 	}
@@ -234,9 +234,11 @@ func (h *Handler) UpdateSquad(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name        *string `json:"name"`
-		Description *string `json:"description"`
-		LeaderID    *string `json:"leader_id"`
+		Name         *string `json:"name"`
+		Description  *string `json:"description"`
+		Instructions *string `json:"instructions"`
+		LeaderID     *string `json:"leader_id"`
+		AvatarURL    *string `json:"avatar_url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -249,6 +251,12 @@ func (h *Handler) UpdateSquad(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Description != nil {
 		params.Description = pgtype.Text{String: *req.Description, Valid: true}
+	}
+	if req.Instructions != nil {
+		params.Instructions = pgtype.Text{String: *req.Instructions, Valid: true}
+	}
+	if req.AvatarURL != nil {
+		params.AvatarUrl = pgtype.Text{String: *req.AvatarURL, Valid: true}
 	}
 	if req.LeaderID != nil {
 		lid, ok := parseUUIDOrBadRequest(w, *req.LeaderID, "leader_id")
@@ -276,10 +284,6 @@ func (h *Handler) UpdateSquad(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := h.Queries.UpdateSquad(r.Context(), params)
 	if err != nil {
-		if isUniqueViolation(err) {
-			writeError(w, http.StatusConflict, "squad name already exists")
-			return
-		}
 		writeError(w, http.StatusInternalServerError, "failed to update squad")
 		return
 	}
@@ -662,6 +666,38 @@ func (h *Handler) shouldEnqueueSquadLeaderOnComment(ctx context.Context, issue d
 		return false
 	}
 
+	return true
+}
+
+// shouldEnqueueSquadLeaderOnAssign returns true when assigning an issue to a
+// squad (or creating an issue pre-assigned to a squad) should immediately
+// trigger the squad leader. Mirrors shouldEnqueueAgentTask: backlog issues
+// are skipped (parking lot), and the leader agent must have a runtime and
+// not be archived.
+func (h *Handler) shouldEnqueueSquadLeaderOnAssign(ctx context.Context, issue db.Issue) bool {
+	if issue.Status == "backlog" {
+		return false
+	}
+	return h.isSquadLeaderReady(ctx, issue)
+}
+
+// isSquadLeaderReady returns true when the issue is assigned to a squad whose
+// leader agent is ready (has a runtime, not archived).
+func (h *Handler) isSquadLeaderReady(ctx context.Context, issue db.Issue) bool {
+	if !issue.AssigneeType.Valid || issue.AssigneeType.String != "squad" || !issue.AssigneeID.Valid {
+		return false
+	}
+	squad, err := h.Queries.GetSquadInWorkspace(ctx, db.GetSquadInWorkspaceParams{
+		ID:          issue.AssigneeID,
+		WorkspaceID: issue.WorkspaceID,
+	})
+	if err != nil {
+		return false
+	}
+	agent, err := h.Queries.GetAgent(ctx, squad.LeaderID)
+	if err != nil || !agent.RuntimeID.Valid || agent.ArchivedAt.Valid {
+		return false
+	}
 	return true
 }
 
