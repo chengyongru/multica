@@ -271,16 +271,19 @@ const EMPTY_REPLIES: TimelineEntry[] = [];
 // ---------------------------------------------------------------------------
 //
 // Properties shown in the sidebar split into two groups:
-//   - core: always rendered (status / priority / assignee / project / parent)
+//   - core: always rendered (status / assignee / project)
 //   - optional: rendered only when the issue has a value for that field OR
 //     the user explicitly added it via "+ Add property" in this session
-//     (due_date / labels)
+//     (priority / due_date / labels)
+//
+// Parent is not in either group — it has its own standalone section below
+// the Properties block, rendered only when the issue actually has a parent.
 //
 // `OPTIONAL_PROP_KEYS` is the open set — adding a new optional field
 // (e.g. `start_date`) means appending here, wiring its row in the JSX
 // switch below, and adding a locale key. The picker, visibility rules,
 // and add-property menu all flow from this one list.
-const OPTIONAL_PROP_KEYS = ["due_date", "labels"] as const;
+const OPTIONAL_PROP_KEYS = ["priority", "due_date", "labels"] as const;
 type OptionalPropKey = (typeof OPTIONAL_PROP_KEYS)[number];
 
 function isOptionalPropSet(
@@ -289,6 +292,8 @@ function isOptionalPropSet(
   attachedLabelsCount: number,
 ): boolean {
   switch (key) {
+    case "priority":
+      return issue.priority !== "none";
     case "due_date":
       return !!issue.due_date;
     case "labels":
@@ -621,6 +626,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   const sidebarOpen = isMobile ? mobileSidebarOpen : desktopSidebarOpen;
   const [propertiesOpen, setPropertiesOpen] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState(true);
+  const [parentIssueOpen, setParentIssueOpen] = useState(true);
   const [pullRequestsOpen, setPullRequestsOpen] = useState(true);
   const [tokenUsageOpen, setTokenUsageOpen] = useState(true);
 
@@ -1194,9 +1200,6 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
           <PropRow label={t(($) => $.detail.prop_status)}>
             <StatusPicker status={issue.status} onUpdate={handleUpdateField} align="start" />
           </PropRow>
-          <PropRow label={t(($) => $.detail.prop_priority)}>
-            <PriorityPicker priority={issue.priority} onUpdate={handleUpdateField} align="start" />
-          </PropRow>
           <PropRow label={t(($) => $.detail.prop_assignee)}>
             <AssigneePicker assigneeType={issue.assignee_type} assigneeId={issue.assignee_id} onUpdate={handleUpdateField} align="start" />
           </PropRow>
@@ -1206,30 +1209,20 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               onUpdate={handleUpdateField}
             />
           </PropRow>
-          <PropRow label={t(($) => $.detail.prop_parent)}>
-            {parentIssue ? (
-              <AppLink
-                href={paths.issueDetail(parentIssue.id)}
-                className="flex min-w-0 items-center gap-1.5 rounded px-1 -mx-1 hover:bg-accent/30 transition-colors overflow-hidden"
-              >
-                <StatusIcon status={parentIssue.status} className="h-3.5 w-3.5 shrink-0" />
-                <span className="text-muted-foreground shrink-0">{parentIssue.identifier}</span>
-                <span className="truncate">{parentIssue.title}</span>
-              </AppLink>
-            ) : (
-              <button
-                type="button"
-                onClick={actions.openSetParent}
-                className="flex items-center gap-1.5 rounded px-1 -mx-1 hover:bg-accent/30 transition-colors text-muted-foreground"
-              >
-                {t(($) => $.detail.set_parent_action)}
-              </button>
-            )}
-          </PropRow>
 
           {/* Optional props — rendered only when set on the issue OR added
               via "+ Add property" in this session. Row order follows the
               order of `OPTIONAL_PROP_KEYS`. */}
+          {visibleOptionalProps.has("priority") && (
+            <PropRow label={t(($) => $.detail.prop_priority)}>
+              <PriorityPicker
+                priority={issue.priority}
+                onUpdate={handleUpdateField}
+                align="start"
+                defaultOpen={autoOpenProp === "priority"}
+              />
+            </PropRow>
+          )}
           {visibleOptionalProps.has("due_date") && (
             <PropRow label={t(($) => $.detail.prop_due_date)}>
               <DueDatePicker
@@ -1271,6 +1264,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                       className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent transition-colors"
                     >
                       <span className="truncate">
+                        {k === "priority" && t(($) => $.detail.prop_priority)}
                         {k === "due_date" && t(($) => $.detail.prop_due_date)}
                         {k === "labels" && t(($) => $.detail.prop_labels)}
                       </span>
@@ -1282,6 +1276,32 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
           )}
         </div>}
       </div>
+
+      {/* Parent issue — standalone section, only when the issue has a
+          parent. Setting a parent is reachable via the issue actions menu;
+          this card surfaces an existing parent without occupying sidebar
+          space for issues that don't have one. */}
+      {parentIssue && (
+        <div>
+          <button
+            className={`flex w-full items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors mb-2 hover:bg-accent/70 ${parentIssueOpen ? "" : "text-muted-foreground hover:text-foreground"}`}
+            onClick={() => setParentIssueOpen(!parentIssueOpen)}
+          >
+            {t(($) => $.detail.section_parent_issue)}
+            <ChevronRight className={`!size-3 shrink-0 stroke-[2.5] text-muted-foreground transition-transform ${parentIssueOpen ? "rotate-90" : ""}`} />
+          </button>
+          {parentIssueOpen && <div className="pl-2">
+            <AppLink
+              href={paths.issueDetail(parentIssue.id)}
+              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 -mx-2 text-xs hover:bg-accent/50 transition-colors group"
+            >
+              <StatusIcon status={parentIssue.status} className="h-3.5 w-3.5 shrink-0" />
+              <span className="text-muted-foreground shrink-0">{parentIssue.identifier}</span>
+              <span className="truncate group-hover:text-foreground">{parentIssue.title}</span>
+            </AppLink>
+          </div>}
+        </div>
+      )}
 
       {/* Pull requests */}
       <div>

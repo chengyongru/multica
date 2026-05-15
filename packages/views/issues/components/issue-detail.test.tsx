@@ -551,16 +551,18 @@ describe("IssueDetail (shared)", () => {
 
     // Core rows — always rendered regardless of whether the issue has a value.
     expect(screen.getByText("Status")).toBeInTheDocument();
-    expect(screen.getByText("Priority")).toBeInTheDocument();
     expect(screen.getByText("Assignee")).toBeInTheDocument();
     // "Project" appears twice (row label + picker stub), so disambiguate by id.
     expect(screen.getByTestId("project-picker")).toBeInTheDocument();
-    expect(screen.getByText("Parent")).toBeInTheDocument();
-    // due_date is set in the fixture, so the optional row is visible.
+    // priority="high" + due_date are set in the fixture, so both optional rows show.
+    expect(screen.getByText("Priority")).toBeInTheDocument();
     expect(screen.getByText("Due date")).toBeInTheDocument();
     // No labels are attached in the fixture — the Labels optional row
     // must stay hidden by default.
     expect(screen.queryByText("Labels")).not.toBeInTheDocument();
+    // Parent issue lives in its own section and only renders when the
+    // issue actually has a parent — the fixture has none.
+    expect(screen.queryByText("Parent issue")).not.toBeInTheDocument();
     // The "+ Add property" affordance is always offered while any
     // optional field is still hidden.
     expect(screen.getByText("Add property")).toBeInTheDocument();
@@ -568,7 +570,11 @@ describe("IssueDetail (shared)", () => {
 
   it("hides every optional property row when none are set", async () => {
     // Override the default fixture: nothing optional set.
-    mockApiObj.getIssue.mockResolvedValue({ ...mockIssue, due_date: null });
+    mockApiObj.getIssue.mockResolvedValue({
+      ...mockIssue,
+      priority: "none",
+      due_date: null,
+    });
 
     renderIssueDetail();
 
@@ -576,11 +582,13 @@ describe("IssueDetail (shared)", () => {
       expect(screen.getByText("Properties")).toBeInTheDocument();
     });
 
+    expect(screen.queryByText("Priority")).not.toBeInTheDocument();
     expect(screen.queryByText("Due date")).not.toBeInTheDocument();
     expect(screen.queryByText("Labels")).not.toBeInTheDocument();
-    // Project and Parent are core rows — always present regardless of value.
+    // Project stays as a core row regardless of value.
     expect(screen.getByTestId("project-picker")).toBeInTheDocument();
-    expect(screen.getByText("Parent")).toBeInTheDocument();
+    // No parent → no standalone Parent issue section either.
+    expect(screen.queryByText("Parent issue")).not.toBeInTheDocument();
     expect(screen.getByText("Add property")).toBeInTheDocument();
   });
 
