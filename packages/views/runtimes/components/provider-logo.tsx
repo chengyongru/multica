@@ -165,6 +165,20 @@ function KiroLogo({ className }: { className: string }) {
   );
 }
 
+// Nanobot — lightweight open-source AI agent framework
+function NanobotLogo({ className }: { className: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <rect x="2" y="2" width="20" height="20" rx="4" fill="#6366f1" />
+      <circle cx="9" cy="11" r="2" fill="white" />
+      <circle cx="15" cy="11" r="2" fill="white" />
+      <path d="M8 16c0 0 2 2 4 2s4-2 4-2" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="12" y1="2" x2="12" y2="0" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="12" cy="0" r="1.5" fill="#6366f1" />
+    </svg>
+  );
+}
+
 export function ProviderLogo({
   provider,
   className = "h-4 w-4",
@@ -193,6 +207,8 @@ export function ProviderLogo({
       return <KimiLogo className={className} />;
     case "kiro":
       return <KiroLogo className={className} />;
+    case "nanobot":
+      return <NanobotLogo className={className} />;
     default:
       return <Monitor className={className} />;
   }
